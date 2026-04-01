@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Baccarat Jxwon Edition</title>
+    <style>
+        :root { --p-blue: #1e88e5; --b-red: #e53935; --t-green: #43a047; --gold: #ffd700; }
+        body { background: #0a0a0a; color: white; font-family: 'Malgun Gothic', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; user-select: none; overflow-x: hidden; }
+        
+        /* 헤더 */
+        #header { width: 100%; background: #1a1a1a; padding: 12px 0; display: flex; justify-content: space-around; align-items: center; border-bottom: 2px solid var(--gold); position: sticky; top:0; z-index:1000; }
+        .btn-small { background: #333; color: #fff; border: 1px solid #555; padding: 5px 10px; cursor: pointer; border-radius: 4px; font-size: 0.8rem; }
+        .btn-charge { background: var(--gold); color: #000; font-weight: bold; border: none; display: none; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        /* 게임판 */
+        #table { width: 1000px; height: 480px; background: radial-gradient(#265e29, #0a240a); border: 15px solid #2b1d1d; border-radius: 240px; position: relative; margin: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        #timer-display { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); font-size: 4rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 15px rgba(255,215,0,0.5); }
+        
+        .card-zone { position: absolute; width: 300px; text-align: center; top: 110px; }
+        #p-zone { left: 120px; } #b-zone { right: 120px; }
+        .score-box { background: rgba(0,0,0,0.8); padding: 5px 15px; border-radius: 20px; color: var(--gold); font-size: 1.1rem; }
+        .cards-display { display: flex; justify-content: center; gap: 10px; min-height: 110px; margin-top: 15px; }
+        .card { width: 70px; height: 105px; background: white; color: black; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.5rem; box-shadow: 2px 2px 5px rgba(0,0,0,0.3); animation: flip 0.4s ease-out; }
+
+        /* 베팅 레이아웃 */
+        .bet-layout { position: absolute; bottom: 25px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .row { display: flex; gap: 8px; }
+        .bet-box { min-width: 120px; height: 50px; border: 2px solid rgba(255,255,255,0.1); border-radius: 10px; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
+        .bet-val { color: var(--gold); font-weight: bold; font-size: 0.85rem; }
+        .winning { animation: flash 0.5s infinite; border-color: var(--gold) !important; }
+        @keyframes flash { 50% { background: var(--gold); color: black; } }
+
+        /* 하단 바 */
+        #roadmap-container { width: 980px; height: 60px; background: #fff; border: 2px solid #333; overflow-x: auto; display: flex; align-items: center; margin-bottom: 15px; padding: 5px; }
+        .road-dot { width: 15px; height: 15px; border-radius: 50%; margin: 2px; flex-shrink: 0; }
+
+        /* 선물 & 어드민 패널 */
+        .panel-grid { width: 980px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px; }
+        .panel-box { background: #111; border: 1px solid #333; padding: 15px; border-radius: 10px; }
+        .panel-title { color: var(--gold); margin: 0 0 10px 0; font-size: 0.9rem; }
+        .panel-input { width: 100%; background: #000; color: #fff; border: 1px solid #444; padding: 8px; margin-bottom: 10px; box-sizing: border-box; }
+        .panel-btn { width: 100%; padding: 10px; cursor: pointer; font-weight: bold; border: none; border-radius: 5px; }
+
+        @keyframes flip { from { transform: rotateY(90deg); } to { transform: rotateY(0deg); } }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <span id="user-display" style="color:#888;">접속 중...</span>
+        <button class="btn-small" onclick="handleLogout()">로그아웃</button>
+    </div>
+    <div>자산: <span id="balance" style="color:var(--gold)">0</span>원</div>
+    <div style="display:flex; align-items:center; gap:10px;">
+        <span id="charge-timer-text">충전 대기: 60초</span>
+        <button id="charge-btn" class="btn-small btn-charge" onclick="collectCharge()">5,000원 충전받기</button>
+    </div>
+</div>
+
+<div id="table">
+    <div id="timer-display">WAIT</div>
+    <div id="status-overlay" style="position:absolute; width:100%; text-align:center; top:42%; font-size:5rem; font-weight:900; z-index:100; pointer-events:none; display:none;"></div>
+    
+    <div id="p-zone" class="card-zone"><span class="score-box">PLAYER: <span id="p-score">0</span></span><div id="p-cards" class="cards-display"></div></div>
+    <div id="b-zone" class="card-zone"><span class="score-box">BANKER: <span id="b-score">0</span></span><div id="b-cards" class="cards-display"></div></div>
+
+    <div class="bet-layout">
+        <div class="row">
+            <div id="area-pp" class="bet-box" onclick="placeBet('PP')"><small>P-PAIR</small><span id="bet-pp" class="bet-val">0</span></div>
+            <div id="area-t" class="bet-box" onclick="placeBet('T')" style="border-color:var(--t-green)"><small>TIE (x9)</small><span id="bet-t" class="bet-val">0</span></div>
+            <div id="area-bp" class="bet-box" onclick="placeBet('BP')"><small>B-PAIR</small><span id="bet-bp" class="bet-val">0</span></div>
+        </div>
+        <div class="row">
+            <div id="area-p" class="bet-box" onclick="placeBet('P')" style="width:180px; height:70px; border-color:var(--p-blue)"><b>PLAYER</b><span id="bet-p" class="bet-val">0</span></div>
+            <div id="area-b" class="bet-box" onclick="placeBet('B')" style="width:180px; height:70px; border-color:var(--b-red)"><b>BANKER</b><span id="bet-b" class="bet-val">0</span></div>
+        </div>
+    </div>
+</div>
+
+<div id="roadmap-container"></div>
+
+<div class="panel-grid">
+    <div class="panel-box">
+        <h3 class="panel-title">🎁 자금 선물하기 (내 돈 보내기)</h3>
+        <input type="email" id="gift-target" class="panel-input" placeholder="상대방 이메일">
+        <input type="number" id="gift-amount" class="panel-input" placeholder="보낼 금액">
+        <button class="panel-btn" style="background:var(--p-blue); color:white;" onclick="sendGift()">선물 보내기</button>
+    </div>
+
+    <div id="admin-panel" class="panel-box" style="display:none; border-color:var(--gold);">
+        <h3 class="panel-title">🛡️ 마스터 패널 (지급 및 제어)</h3>
+        <div style="display:flex; gap:5px; margin-bottom:10px;">
+            <button class="btn-small" onclick="forceNext('P')">P강제</button>
+            <button class="btn-small" onclick="forceNext('B')">B강제</button>
+            <button class="btn-small" onclick="forceNext('T')">T강제</button>
+        </div>
+        <input type="email" id="admin-target" class="panel-input" placeholder="지급 대상 이메일">
+        <input type="number" id="admin-amount" class="panel-input" placeholder="지급할 금액">
+        <div style="display:flex; gap:5px;">
+            <button class="panel-btn" style="background:var(--b-red); color:white;" onclick="adminGive()">즉시 지급</button>
+            <button class="panel-btn" style="background:#555; color:white;" onclick="adminTransfer()">어드민 양도</button>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, updateDoc, increment, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyB82nryTqpxf0Gl4Mq0djXI2nsSYnvhXBo",
+        authDomain: "baccaratjxwon.firebaseapp.com",
+        projectId: "baccaratjxwon",
+        storageBucket: "baccaratjxwon.firebasestorage.app",
+        messagingSenderId: "649239216574",
+        appId: "1:649239216574:web:e7c0f4a41a676c397939ef"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const MASTER_EMAIL = "wonnnworkdy1@gmail.com";
+
+    let balance = 0, myBets = { P:0, B:0, T:0, PP:0, BP:0 };
+    let cTime = 60, isSettled = false;
+
+    // 1. 초기화 및 실시간 데이터 감시
+    auth.onAuthStateChanged(async (user) => {
+        if(!user) { location.href = "index.html"; return; }
+        document.getElementById('user-display').innerText = user.email;
+
+        onSnapshot(doc(db, "users", user.email), (snap) => {
+            if(snap.exists()){
+                const d = snap.data();
+                balance = d.money;
+                document.getElementById('balance').innerText = balance.toLocaleString();
+                if(user.email === MASTER_EMAIL || d.isAdmin) document.getElementById('admin-panel').style.display = "block";
+            }
+        });
+        
+        startChargeTimer();
+        syncGame(user.email);
+    });
+
+    // 2. 로그아웃
+    window.handleLogout = () => { if(confirm("로그아웃 하시겠습니까?")) signOut(auth); };
+
+    // 3. 클릭형 자동 충전
+    function startChargeTimer() {
+        setInterval(() => {
+            if(cTime > 0) {
+                cTime--;
+                document.getElementById('charge-timer-text').innerText = "충전 대기: " + cTime + "초";
+                document.getElementById('charge-btn').style.display = "none";
+            } else {
+                document.getElementById('charge-timer-text').innerText = "충전 가능!";
+                document.getElementById('charge-btn').style.display = "block";
+            }
+        }, 1000);
+    }
+    window.collectCharge = async () => {
+        await updateDoc(doc(db, "users", auth.currentUser.email), { money: increment(5000) });
+        cTime = 60;
+        alert("5,000원이 충전되었습니다!");
+    };
+
+    // 4. 게임 엔진 (타이머 및 동기화)
+    function syncGame(email) {
+        onSnapshot(doc(db, "game", "status"), (snap) => {
+            const d = snap.data(); if(!d) return;
+            document.getElementById('timer-display').innerText = d.timer;
+            if(d.history) renderRoadmap(d.history);
+
+            if(d.state === "DEALING" && d.cards) {
+                if(!isSettled) { renderCards(d.cards); settleGame(d.cards); }
+            } else if(d.state === "WAITING") { resetTable(); }
+
+            // 엔진 릴레이 (시간이 안 갈 때 대비)
+            if (email === MASTER_EMAIL || (!d.lastTick || Date.now() - d.lastTick > 3000)) {
+                if(!window.engineActive) { window.engineActive = true; runEngine(email); }
+            }
+        });
+    }
+
+    async function runEngine(email) {
+        const ref = doc(db, "game", "status");
+        const d = (await getDoc(ref)).data();
+        if(d.state === "WAITING") {
+            if(d.timer > 0) await updateDoc(ref, { timer: increment(-1), lastTick: Date.now(), host: email });
+            else {
+                const res = runLogic(d.forceWin || 'RANDOM');
+                const history = [...(d.history || []), res.win].slice(-50);
+                await updateDoc(ref, { state: "DEALING", cards: res, history, lastTick: Date.now() });
+                setTimeout(() => updateDoc(ref, { state:"WAITING", timer:20, cards:null, forceWin:"RANDOM" }), 10000);
+            }
+        } else {
+            await updateDoc(ref, { lastTick: Date.now() });
+        }
+        setTimeout(() => runEngine(email), 1000);
+    }
+
+    function runLogic(force) {
+        const deck = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+        const val = (c) => (['10','J','Q','K'].includes(c) ? 0 : (c==='A'?1:parseInt(c)));
+        const draw = () => deck[Math.floor(Math.random()*13)];
+        let p = [draw(), draw()], b = [draw(), draw()];
+        let ps = (val(p[0])+val(p[1]))%10, bs = (val(b[0])+val(b[1]))%10;
+        if(ps<=5) p.push(draw()); if(bs<=5) b.push(draw());
+        ps = p.reduce((a,c)=>a+val(c),0)%10; bs = b.reduce((a,c)=>a+val(c),0)%10;
+        let win = ps > bs ? 'P' : (bs > ps ? 'B' : 'T');
+        if(force !== 'RANDOM' && win !== force) return runLogic(force);
+        return { p, b, ps, bs, win };
+    }
+
+    // 5. 베팅 및 정산
+    window.placeBet = async (t) => {
+        let amt = 10000; // 기본 베팅액 (칩 선택 기능 유지 가능)
+        if(balance < amt) return alert("자금이 부족합니다.");
+        await updateDoc(doc(db, "users", auth.currentUser.email), { money: increment(-amt) });
+        myBets[t] += amt;
+        document.getElementById('bet-'+t.toLowerCase()).innerText = myBets[t].toLocaleString();
+    };
+
+    async function settleGame(c) {
+        isSettled = true;
+        let winPrize = 0;
+        if(c.win === 'P') winPrize += myBets.P * 2;
+        else if(c.win === 'B') winPrize += myBets.B * 1.95;
+        else if(c.win === 'T') { winPrize += (myBets.P + myBets.B); winPrize += myBets.T * 9; }
+        if(c.p[0] === c.p[1]) winPrize += myBets.PP * 12;
+        if(c.b[0] === c.b[1]) winPrize += myBets.BP * 12;
+
+        if(winPrize > 0) await updateDoc(doc(db, "users", auth.currentUser.email), { money: increment(Math.floor(winPrize)) });
+        
+        const overlay = document.getElementById('status-overlay');
+        overlay.innerText = c.win + " WIN"; overlay.style.display = "block";
+        overlay.style.color = c.win==='P'?'var(--p-blue)':c.win==='B'?'var(--b-red)':'var(--t-green)';
+        document.getElementById('area-'+(c.win==='T'?'t':c.win.toLowerCase())).classList.add('winning');
+    }
+
+    function renderCards(c) {
+        document.getElementById('p-cards').innerHTML = c.p.map(n => `<div class="card">${n}</div>`).join('');
+        document.getElementById('b-cards').innerHTML = c.b.map(n => `<div class="card">${n}</div>`).join('');
+        document.getElementById('p-score').innerText = c.ps; document.getElementById('b-score').innerText = c.bs;
+    }
+
+    function renderRoadmap(h) {
+        document.getElementById('roadmap-container').innerHTML = h.map(r => `<div class="road-dot" style="background:${r==='P'?'var(--p-blue)':r==='B'?'var(--b-red)':'var(--t-green)'}"></div>`).join('');
+    }
+
+    function resetTable() {
+        isSettled = false;
+        document.getElementById('status-overlay').style.display = "none";
+        document.querySelectorAll('.bet-box').forEach(b => b.classList.remove('winning'));
+        document.querySelectorAll('.bet-val').forEach(v => v.innerText = "0");
+        document.getElementById('p-cards').innerHTML = ''; document.getElementById('b-cards').innerHTML = '';
+        myBets = { P:0, B:0, T:0, PP:0, BP:0 };
+    }
+
+    // 6. 선물 및 어드민 기능
+    window.sendGift = async () => {
+        const target = document.getElementById('gift-target').value;
+        const amount = parseInt(document.getElementById('gift-amount').value);
+        if(!target || amount <= 0 || balance < amount) return alert("자금이나 정보를 확인하세요.");
+        
+        try {
+            await updateDoc(doc(db, "users", auth.currentUser.email), { money: increment(-amount) });
+            await updateDoc(doc(db, "users", target), { money: increment(amount) });
+            alert(target + "님에게 선물 완료!");
+        } catch(e) { alert("상대방이 존재하지 않습니다."); }
+    };
+
+    window.adminGive = async () => {
+        const target = document.getElementById('admin-target').value;
+        const amount = parseInt(document.getElementById('admin-amount').value);
+        await updateDoc(doc(db, "users", target), { money: increment(amount) });
+        alert("관리자 권한으로 " + amount + "원을 지급했습니다.");
+    };
+
+    window.adminTransfer = async () => {
+        const target = document.getElementById('admin-target').value;
+        await updateDoc(doc(db, "users", target), { isAdmin: true });
+        alert(target + "님에게 어드민 권한을 양도했습니다.");
+    };
+
+    window.forceNext = async (res) => {
+        await updateDoc(doc(db, "game", "status"), { forceWin: res });
+        alert("다음 판 결과가 " + res + "로 고정되었습니다.");
+    };
+
+</script>
+</body>
+</html>
