@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Baccarat Master - Jxwon Edition</title>
+    <style>
+        :root { --p-blue: #1e88e5; --b-red: #e53935; --t-green: #43a047; --gold: #ffd700; }
+        body { background: #0a0a0a; color: white; font-family: 'Malgun Gothic', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; user-select: none; overflow: hidden; }
+        #header { width: 100%; background: #1a1a1a; padding: 15px 0; display: flex; justify-content: space-around; border-bottom: 2px solid var(--gold); font-weight: bold; }
+        #table { width: 1000px; height: 500px; background: radial-gradient(#265e29, #0a240a); border: 15px solid #2b1d1d; border-radius: 250px; position: relative; margin: 20px; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        #timer-display { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); font-size: 4rem; font-weight: 900; color: var(--gold); text-shadow: 0 0 15px rgba(0,0,0,0.8); }
+        .card-zone { position: absolute; width: 300px; text-align: center; top: 100px; }
+        #p-zone { left: 100px; } #b-zone { right: 100px; }
+        .score-box { background: rgba(0,0,0,0.8); padding: 5px 15px; border-radius: 20px; color: var(--gold); font-size: 1.2rem; }
+        .cards-display { display: flex; justify-content: center; gap: 10px; min-height: 110px; margin-top: 15px; }
+        /* 싱글플레이어 원본 카드 디자인 */
+        .card { width: 75px; height: 110px; background: white; color: black; border-radius: 6px; position: relative; box-shadow: 2px 4px 10px rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: Arial, sans-serif; }
+        .card.red { color: #d32f2f; }
+        .card .rank { position: absolute; top: 5px; left: 5px; font-size: 16px; font-weight: bold; }
+        .card .suit { font-size: 40px; }
+        #status-overlay { position: absolute; width: 100%; text-align: center; top: 45%; font-size: 4rem; font-weight: bold; z-index: 100; display: none; text-shadow: 0 0 15px black; }
+    </style>
+</head>
+<body>
+
+<div id="header">
+    <div id="user-email">접속 중...</div>
+    <div>자산: <span id="balance" style="color:var(--gold);">0</span>원</div>
+</div>
+
+<div id="table">
+    <div id="timer-display">20</div>
+    <div id="status-overlay"></div>
+    <div id="p-zone" class="card-zone"><span class="score-box">PLAYER: <span id="p-score">0</span></span><div id="p-cards" class="cards-display"></div></div>
+    <div id="b-zone" class="card-zone"><span class="score-box">BANKER: <span id="b-score">0</span></span><div id="b-cards" class="cards-display"></div></div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, updateDoc, onSnapshot, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyB82nryTqpxf0Gl4Mq0djXI2nsSYnvhXBo",
+        authDomain: "baccaratjxwon.firebaseapp.com",
+        projectId: "baccaratjxwon",
+        storageBucket: "baccaratjxwon.firebasestorage.app",
+        messagingSenderId: "649239216574",
+        appId: "1:649239216574:web:e7c0f4a41a676c397939ef"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const MASTER = "wonnnworkdy1@gmail.com";
+
+    let isSettled = false;
+
+    // --- 싱글플레이어 원본 로직 (카드 객체화 유지) ---
+    function runLogic(force) {
+        const r=['A','2','3','4','5','6','7','8','9','10','J','Q','K'], s=['S','H','D','C'];
+        const draw = () => ({r: r[Math.floor(Math.random()*13)], s: s[Math.floor(Math.random()*4)]});
+        const getV = (r) => (r==='A' ? 1 : (['10','J','Q','K'].includes(r) ? 0 : parseInt(r)));
+        const getS = (h) => h.reduce((a, c) => a + getV(c.r), 0) % 10;
+
+        let p = [draw(), draw()], b = [draw(), draw()];
+        let ps = getS(p), bs = getS(b);
+        if(ps <= 5 && bs < 8) p.push(draw());
+        if(bs <= 5 && ps < 8) b.push(draw());
+        ps = getS(p); bs = getS(b);
+        let win = ps > bs ? 'P' : (bs > ps ? 'B' : 'T');
+
+        if(force !== 'RANDOM' && win !== force) return runLogic(force);
+        return { p, b, ps, bs, win };
+    }
+
+    // --- 엔진: Double 타입 강제 주입 로직 ---
+    async function startEngine() {
+        if(window.engineRunning) return;
+        window.engineRunning = true;
+        setInterval(async () => {
+            const ref = doc(db, "game", "status");
+            const snap = await getDoc(ref);
+            const d = snap.data();
+            // lastTick에 .001을 더해 강제로 Double(실수) 유지
+            const nowDouble = parseFloat((Date.now() + 0.001).toFixed(3));
+
+            if (d.state === "WAITING") {
+                if (d.timer > 0.5) {
+                    await updateDoc(ref, { 
+                        timer: parseFloat((d.timer - 1.0 + 0.001).toFixed(3)), 
+                        lastTick: nowDouble 
+                    });
+                } else {
+                    const res = runLogic(d.forceWin || 'RANDOM');
+                    await updateDoc(ref, { 
+                        state: "DEALING", cards: res, lastTick: nowDouble, timer: 0.001 
+                    });
+                    setTimeout(() => updateDoc(ref, { state: "WAITING", timer: 20.001, cards: null, forceWin: "RANDOM" }), 12000);
+                }
+            } else {
+                await updateDoc(ref, { lastTick: nowDouble });
+            }
+        }, 1000);
+    }
+
+    // --- 화면 그리기 (싱글플레이어 방식 카드 생성) ---
+    function createCard(card) {
+        const el = document.createElement('div');
+        const isRed = card.s === 'H' || card.s === 'D';
+        const suitIcons = {S:'♠', H:'♥', D:'♦', C:'♣'};
+        el.className = `card ${isRed ? 'red' : ''}`;
+        el.innerHTML = `<div class="rank">${card.r}</div><div class="suit">${suitIcons[card.s]}</div>`;
+        return el;
+    }
+
+    auth.onAuthStateChanged(user => {
+        if(!user) return;
+        document.getElementById('user-email').innerText = user.email;
+        onSnapshot(doc(db, "game", "status"), async (snap) => {
+            const d = snap.data();
+            document.getElementById('timer-display').innerText = Math.floor(d.timer);
+
+            if(d.state === "DEALING" && d.cards && !isSettled) {
+                isSettled = true;
+                const p_c = document.getElementById('p-cards');
+                const b_c = document.getElementById('b-cards');
+                p_c.innerHTML = ''; b_c.innerHTML = '';
+                
+                for(let i=0; i<2; i++) {
+                    p_c.appendChild(createCard(d.cards.p[i])); await new Promise(r=>setTimeout(r,600));
+                    b_c.appendChild(createCard(d.cards.b[i])); await new Promise(r=>setTimeout(r,600));
+                }
+                if(d.cards.p[2]) { p_c.appendChild(createCard(d.cards.p[2])); await new Promise(r=>setTimeout(r,600)); }
+                if(d.cards.b[2]) { b_c.appendChild(createCard(d.cards.b[2])); await new Promise(r=>setTimeout(r,600)); }
+                
+                document.getElementById('p-score').innerText = d.cards.ps;
+                document.getElementById('b-score').innerText = d.cards.bs;
+                document.getElementById('status-overlay').innerText = d.cards.win + " WIN";
+                document.getElementById('status-overlay').style.display = 'block';
+            } else if(d.state === "WAITING") {
+                isSettled = false;
+                document.getElementById('p-score').innerText = '0';
+                document.getElementById('b-score').innerText = '0';
+                document.getElementById('p-cards').innerHTML = '';
+                document.getElementById('b-cards').innerHTML = '';
+                document.getElementById('status-overlay').style.display = 'none';
+            }
+            if(user.email === MASTER) startEngine();
+        });
+    });
+</script>
+</body>
+</html>
